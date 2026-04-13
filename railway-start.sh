@@ -14,8 +14,13 @@ AGENT_TAR="$DATA_VOLUME/nanoclaw-agent.tar"
 export CONTAINER_NETWORK_MODE=host
 
 # ── 2. Start Docker daemon ────────────────────────────────────────────────────
-echo "[nanoclaw] Starting Docker daemon (--iptables=false)..."
-dockerd --host=unix:///var/run/docker.sock --iptables=false 2>&1 | sed 's/^/[dockerd] /' &
+echo "[nanoclaw] Starting Docker daemon (no bridge, no iptables)..."
+dockerd \
+  --host=unix:///var/run/docker.sock \
+  --iptables=false \
+  --ip6tables=false \
+  --bridge=none \
+  2>&1 | sed 's/^/[dockerd] /' &
 
 # Wait up to 60 seconds for dockerd to become responsive
 for i in $(seq 1 60); do
