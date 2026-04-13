@@ -5,7 +5,12 @@ import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import { ASSISTANT_NAME } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
-import { Channel, NewMessage, OnChatMetadata, OnInboundMessage } from '../types.js';
+import {
+  Channel,
+  NewMessage,
+  OnChatMetadata,
+  OnInboundMessage,
+} from '../types.js';
 import { registerWebhookHandler } from '../webhook-registry.js';
 import { ChannelOpts, registerChannel } from './registry.js';
 
@@ -147,7 +152,10 @@ export class KapsoChannel implements Channel {
     }
 
     if (!text) {
-      logger.debug({ type: message.type, jid }, 'Kapso: skipping non-text message');
+      logger.debug(
+        { type: message.type, jid },
+        'Kapso: skipping non-text message',
+      );
       return;
     }
 
@@ -161,7 +169,9 @@ export class KapsoChannel implements Channel {
     }
 
     const msg: NewMessage = {
-      id: message.id || `kapso-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id:
+        message.id ||
+        `kapso-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       chat_jid: jid,
       sender: senderPhone,
       sender_name: senderName,

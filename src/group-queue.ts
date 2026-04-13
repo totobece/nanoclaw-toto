@@ -353,8 +353,22 @@ export class GroupQueue {
     }
   }
 
-  getActiveState(): Map<string, { active: boolean; containerName: string | null; groupFolder: string | null }> {
-    const state = new Map<string, { active: boolean; containerName: string | null; groupFolder: string | null }>();
+  getActiveState(): Map<
+    string,
+    {
+      active: boolean;
+      containerName: string | null;
+      groupFolder: string | null;
+    }
+  > {
+    const state = new Map<
+      string,
+      {
+        active: boolean;
+        containerName: string | null;
+        groupFolder: string | null;
+      }
+    >();
     for (const [jid, s] of this.groups) {
       if (s.active) {
         state.set(jid, {

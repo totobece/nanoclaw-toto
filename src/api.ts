@@ -27,7 +27,8 @@ import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const JWT_SECRET =
+  process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const JWT_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface JwtPayload {
@@ -49,17 +50,27 @@ function base64UrlDecode(data: string): string {
 
 function signJwt(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   const now = Date.now();
-  const fullPayload: JwtPayload = { ...payload, iat: now, exp: now + JWT_EXPIRY_MS };
+  const fullPayload: JwtPayload = {
+    ...payload,
+    iat: now,
+    exp: now + JWT_EXPIRY_MS,
+  };
   const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const body = base64UrlEncode(JSON.stringify(fullPayload));
-  const signature = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  const signature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${header}.${body}`)
+    .digest('base64url');
   return `${header}.${body}.${signature}`;
 }
 
 function verifyJwt(token: string): JwtPayload | null {
   try {
     const [header, body, signature] = token.split('.');
-    const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+    const expectedSig = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(`${header}.${body}`)
+      .digest('base64url');
     if (signature !== expectedSig) return null;
     const payload: JwtPayload = JSON.parse(base64UrlDecode(body));
     if (payload.exp < Date.now()) return null;
@@ -81,22 +92,40 @@ function authenticateRequest(req: http.IncomingMessage): JwtPayload | null {
 
 interface ApiDeps {
   getRegisteredGroups: () => Record<string, RegisteredGroup>;
-  getQueueState: () => Map<string, { active: boolean; containerName: string | null; groupFolder: string | null }>;
+  getQueueState: () => Map<
+    string,
+    {
+      active: boolean;
+      containerName: string | null;
+      groupFolder: string | null;
+    }
+  >;
 }
 
 function setCorsHeaders(res: http.ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PUT, DELETE, OPTIONS',
+  );
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
+function sendJson(
+  res: http.ServerResponse,
+  statusCode: number,
+  data: unknown,
+): void {
   setCorsHeaders(res);
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
 
-function sendError(res: http.ServerResponse, statusCode: number, message: string): void {
+function sendError(
+  res: http.ServerResponse,
+  statusCode: number,
+  message: string,
+): void {
   sendJson(res, statusCode, { error: message });
 }
 
@@ -134,7 +163,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // POST /api/auth/login
-      if (segments[1] === 'auth' && segments[2] === 'login' && method === 'POST') {
+      if (
+        segments[1] === 'auth' &&
+        segments[2] === 'login' &&
+        method === 'POST'
+      ) {
         const body = JSON.parse(await readBody(req));
         const { email, password } = body;
         if (!email || !password) {
@@ -147,13 +180,25 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
           return;
         }
         const tenantIds = JSON.parse(user.tenant_ids) as string[];
-        const token = signJwt({ userId: user.id, email: user.email, role: user.role, tenantIds });
-        sendJson(res, 200, { token, user: { id: user.id, email: user.email, role: user.role, tenantIds } });
+        const token = signJwt({
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          tenantIds,
+        });
+        sendJson(res, 200, {
+          token,
+          user: { id: user.id, email: user.email, role: user.role, tenantIds },
+        });
         return;
       }
 
       // POST /api/auth/register (bootstrap — creates first user)
-      if (segments[1] === 'auth' && segments[2] === 'register' && method === 'POST') {
+      if (
+        segments[1] === 'auth' &&
+        segments[2] === 'register' &&
+        method === 'POST'
+      ) {
         const body = JSON.parse(await readBody(req));
         const { email, password, role } = body;
         if (!email || !password) {
@@ -169,8 +214,16 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
             role: role || 'admin',
             tenant_ids: ['default'],
           });
-          const token = signJwt({ userId: id, email, role: role || 'admin', tenantIds: ['default'] });
-          sendJson(res, 201, { token, user: { id, email, role: role || 'admin', tenantIds: ['default'] } });
+          const token = signJwt({
+            userId: id,
+            email,
+            role: role || 'admin',
+            tenantIds: ['default'],
+          });
+          sendJson(res, 201, {
+            token,
+            user: { id, email, role: role || 'admin', tenantIds: ['default'] },
+          });
         } catch (err) {
           sendError(res, 409, 'User already exists');
         }
@@ -199,36 +252,66 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // GET /api/tenants
-      if (segments[1] === 'tenants' && segments.length === 2 && method === 'GET') {
+      if (
+        segments[1] === 'tenants' &&
+        segments.length === 2 &&
+        method === 'GET'
+      ) {
         const tenants = getAllTenants();
         sendJson(res, 200, tenants);
         return;
       }
 
       // POST /api/tenants
-      if (segments[1] === 'tenants' && segments.length === 2 && method === 'POST') {
+      if (
+        segments[1] === 'tenants' &&
+        segments.length === 2 &&
+        method === 'POST'
+      ) {
         const body = JSON.parse(await readBody(req));
-        const id = body.id || `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const slug = body.slug || body.name?.toLowerCase().replace(/[^a-z0-9]/g, '-') || id;
-        createTenant({ id, name: body.name || 'New Tenant', slug, settings: body.settings });
+        const id =
+          body.id ||
+          `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const slug =
+          body.slug ||
+          body.name?.toLowerCase().replace(/[^a-z0-9]/g, '-') ||
+          id;
+        createTenant({
+          id,
+          name: body.name || 'New Tenant',
+          slug,
+          settings: body.settings,
+        });
         const tenant = getTenantById(id);
         sendJson(res, 201, tenant);
         return;
       }
 
       // DELETE /api/tenants/:id
-      if (segments[1] === 'tenants' && segments.length === 3 && method === 'DELETE') {
+      if (
+        segments[1] === 'tenants' &&
+        segments.length === 3 &&
+        method === 'DELETE'
+      ) {
         try {
           deleteTenant(segments[2]);
           sendJson(res, 200, { ok: true });
         } catch (err) {
-          sendError(res, 400, err instanceof Error ? err.message : 'Failed to delete tenant');
+          sendError(
+            res,
+            400,
+            err instanceof Error ? err.message : 'Failed to delete tenant',
+          );
         }
         return;
       }
 
       // PUT /api/tenants/:id
-      if (segments[1] === 'tenants' && segments.length === 3 && method === 'PUT') {
+      if (
+        segments[1] === 'tenants' &&
+        segments.length === 3 &&
+        method === 'PUT'
+      ) {
         const body = JSON.parse(await readBody(req));
         updateTenant(segments[2], body);
         const tenant = getTenantById(segments[2]);
@@ -241,7 +324,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
         const tenantId = segments[2];
 
         // GET /api/tenants/:id/agents
-        if (segments[3] === 'agents' && segments.length === 4 && method === 'GET') {
+        if (
+          segments[3] === 'agents' &&
+          segments.length === 4 &&
+          method === 'GET'
+        ) {
           const groups = getRegisteredGroupsByTenant(tenantId);
           const agents = Object.entries(groups).map(([jid, group]) => ({
             jid,
@@ -262,9 +349,16 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
           const jid = decodeURIComponent(segments[4]);
 
           // GET /api/tenants/:id/agents/:jid/messages
-          if (segments[5] === 'messages' && segments.length === 6 && method === 'GET') {
+          if (
+            segments[5] === 'messages' &&
+            segments.length === 6 &&
+            method === 'GET'
+          ) {
             const since = parsedUrl.searchParams.get('since') || '';
-            const limit = parseInt(parsedUrl.searchParams.get('limit') || '100', 10);
+            const limit = parseInt(
+              parsedUrl.searchParams.get('limit') || '100',
+              10,
+            );
             const botName = process.env.ASSISTANT_NAME || 'Andy';
             const messages = getMessagesSince(jid, since, botName, limit);
             sendJson(res, 200, messages);
@@ -272,7 +366,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
           }
 
           // POST /api/tenants/:id/agents/:jid/messages
-          if (segments[5] === 'messages' && segments.length === 6 && method === 'POST') {
+          if (
+            segments[5] === 'messages' &&
+            segments.length === 6 &&
+            method === 'POST'
+          ) {
             const body = JSON.parse(await readBody(req));
             const content = body.content || body.text || '';
             if (!content) {
@@ -298,7 +396,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
           }
 
           // GET /api/tenants/:id/agents/:jid/claude-md
-          if (segments[5] === 'claude-md' && segments.length === 6 && method === 'GET') {
+          if (
+            segments[5] === 'claude-md' &&
+            segments.length === 6 &&
+            method === 'GET'
+          ) {
             const groups = deps.getRegisteredGroups();
             const group = groups[jid];
             if (!group) {
@@ -322,7 +424,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
           }
 
           // PUT /api/tenants/:id/agents/:jid/claude-md
-          if (segments[5] === 'claude-md' && segments.length === 6 && method === 'PUT') {
+          if (
+            segments[5] === 'claude-md' &&
+            segments.length === 6 &&
+            method === 'PUT'
+          ) {
             const groups = deps.getRegisteredGroups();
             const group = groups[jid];
             if (!group) {
@@ -347,9 +453,18 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // GET /api/containers
-      if (segments[1] === 'containers' && segments.length === 2 && method === 'GET') {
+      if (
+        segments[1] === 'containers' &&
+        segments.length === 2 &&
+        method === 'GET'
+      ) {
         const queueState = deps.getQueueState();
-        const containers: Array<{ jid: string; active: boolean; containerName: string | null; groupFolder: string | null }> = [];
+        const containers: Array<{
+          jid: string;
+          active: boolean;
+          containerName: string | null;
+          groupFolder: string | null;
+        }> = [];
         for (const [jid, state] of queueState) {
           containers.push({ jid, ...state });
         }
@@ -358,7 +473,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // GET /api/tasks
-      if (segments[1] === 'tasks' && segments.length === 2 && method === 'GET') {
+      if (
+        segments[1] === 'tasks' &&
+        segments.length === 2 &&
+        method === 'GET'
+      ) {
         const tenantId = parsedUrl.searchParams.get('tenantId');
         const tasks = tenantId ? getTasksByTenant(tenantId) : getAllTasks();
         sendJson(res, 200, tasks);
@@ -366,12 +485,16 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // GET /api/sse/events
-      if (segments[1] === 'sse' && segments[2] === 'events' && method === 'GET') {
+      if (
+        segments[1] === 'sse' &&
+        segments[2] === 'events' &&
+        method === 'GET'
+      ) {
         setCorsHeaders(res);
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          Connection: 'keep-alive',
         });
 
         const listener = (event: NanoClawEvent) => {
@@ -394,7 +517,11 @@ export function startApiServer(port: number, deps: ApiDeps): http.Server {
       }
 
       // POST /api/webhooks/:name — generic webhook routing
-      if (segments[1] === 'webhooks' && segments.length === 3 && method === 'POST') {
+      if (
+        segments[1] === 'webhooks' &&
+        segments.length === 3 &&
+        method === 'POST'
+      ) {
         const handler = getWebhookHandler(segments[2]);
         if (!handler) {
           sendError(res, 404, 'Webhook not found');

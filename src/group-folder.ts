@@ -43,7 +43,10 @@ export function resolveGroupIpcPath(folder: string): string {
   return ipcPath;
 }
 
-export function resolveGroupFolderPathForTenant(tenantId: string, folder: string): string {
+export function resolveGroupFolderPathForTenant(
+  tenantId: string,
+  folder: string,
+): string {
   if (tenantId === 'default') return resolveGroupFolderPath(folder);
   assertValidGroupFolder(folder);
   const tenantGroupsDir = path.resolve(TENANTS_DIR, tenantId, 'groups');
@@ -52,7 +55,10 @@ export function resolveGroupFolderPathForTenant(tenantId: string, folder: string
   return groupPath;
 }
 
-export function resolveGroupIpcPathForTenant(tenantId: string, folder: string): string {
+export function resolveGroupIpcPathForTenant(
+  tenantId: string,
+  folder: string,
+): string {
   if (tenantId === 'default') return resolveGroupIpcPath(folder);
   assertValidGroupFolder(folder);
   const tenantIpcDir = path.resolve(TENANTS_DIR, tenantId, 'data', 'ipc');

@@ -387,7 +387,9 @@ export async function runContainerAgent(
             eventBus.emit('event', {
               type: 'container_output',
               groupFolder: group.folder,
-              result: parsed.result ? String(parsed.result).slice(0, 200) : null,
+              result: parsed.result
+                ? String(parsed.result).slice(0, 200)
+                : null,
               timestamp: new Date().toISOString(),
             });
             outputChain = outputChain.then(() => onOutput(parsed));
