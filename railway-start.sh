@@ -7,6 +7,11 @@ DATA_VOLUME="${DATA_VOLUME:-/app}"
 AGENT_TAR="$DATA_VOLUME/nanoclaw-agent.tar"
 
 # ── 1. Start Docker daemon ────────────────────────────────────────────────────
+# Switch to legacy iptables backend — nf_tables requires extra kernel
+# capabilities not available in Railway containers without privileged mode.
+update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+
 echo "[nanoclaw] Starting Docker daemon..."
 dockerd --host=unix:///var/run/docker.sock 2>&1 | sed 's/^/[dockerd] /' &
 
