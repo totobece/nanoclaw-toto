@@ -7,6 +7,7 @@ import {
   ASSISTANT_NAME,
   CREDENTIAL_PROXY_PORT,
   IDLE_TIMEOUT,
+  IS_RAILWAY,
   POLL_INTERVAL,
   TIMEZONE,
   TRIGGER_PATTERN,
@@ -487,6 +488,10 @@ function recoverPendingMessages(): void {
 }
 
 function ensureContainerSystemRunning(): void {
+  if (IS_RAILWAY) {
+    logger.info('Railway mode: skipping Docker runtime check (agents run as subprocesses)');
+    return;
+  }
   ensureContainerRuntimeRunning();
   cleanupOrphans();
 }
