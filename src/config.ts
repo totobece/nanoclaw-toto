@@ -83,5 +83,9 @@ export const TRIGGER_PATTERN = new RegExp(
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-export const API_PORT = parseInt(process.env.API_PORT || '3100', 10);
+// Railway sets PORT automatically — always prefer it over API_PORT
+export const API_PORT = parseInt(
+  process.env.PORT || process.env.API_PORT || '3100',
+  10,
+);
 export const TENANTS_DIR = path.resolve(PROJECT_ROOT, 'tenants');
