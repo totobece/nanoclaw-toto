@@ -489,11 +489,42 @@ function recoverPendingMessages(): void {
 
 function ensureContainerSystemRunning(): void {
   if (IS_RAILWAY) {
-    logger.info('Railway mode: skipping Docker runtime check (agents run as subprocesses)');
+    logger.info(
+      'Railway mode: skipping Docker runtime check (agents run as subprocesses)',
+    );
     return;
   }
   ensureContainerRuntimeRunning();
   cleanupOrphans();
+}
+
+/**
+ * Auto-register a main group from environment variables on first run.
+ * Useful for Railway where the database starts empty.
+ * Set MAIN_CHAT_JID, MAIN_CHAT_NAME (optional), MAIN_CHAT_FOLDER (optional).
+ */
+function autoRegisterMainGroupFromEnv(): void {
+  const jid = process.env.MAIN_CHAT_JID;
+  if (!jid) return;
+
+  const alreadyHasMain = Object.values(registeredGroups).some(
+    (g) => g.isMain === true,
+  );
+  if (alreadyHasMain) return;
+
+  const name = process.env.MAIN_CHAT_NAME || 'main';
+  const folder = process.env.MAIN_CHAT_FOLDER || 'main';
+
+  registerGroup(jid, {
+    name,
+    folder,
+    isMain: true,
+    requiresTrigger: false,
+    trigger: TRIGGER_PATTERN.source,
+    added_at: new Date().toISOString(),
+  });
+  registeredGroups = getAllRegisteredGroups();
+  logger.info({ jid, name, folder }, 'Auto-registered main group from env');
 }
 
 async function main(): Promise<void> {
@@ -501,6 +532,7 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+  autoRegisterMainGroupFromEnv();
   restoreRemoteControl();
 
   // Start credential proxy (containers route API calls through this)
