@@ -26,6 +26,8 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
+import { eventBus } from './event-bus.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -42,7 +44,6 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   imageAttachments?: Array<{ relativePath: string; mediaType: string }>;
-
 }
 
 export interface ContainerOutput {
@@ -240,6 +241,12 @@ function buildContainerArgs(
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
+  // Pass third-party API keys that MCP servers inside the container need
+  const thirdPartyKeys = readEnvFile(['NOTION_API_KEY']);
+  if (thirdPartyKeys.NOTION_API_KEY) {
+    args.push('-e', `NOTION_API_KEY=${thirdPartyKeys.NOTION_API_KEY}`);
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
@@ -315,10 +322,18 @@ export async function runContainerAgent(
 
     onProcess(container, containerName);
 
+    eventBus.emit('event', {
+      type: 'container_start',
+      groupFolder: group.folder,
+      containerName,
+      timestamp: new Date().toISOString(),
+    });
+
     let stdout = '';
     let stderr = '';
     let stdoutTruncated = false;
     let stderrTruncated = false;
+    let stderrLastEmit = 0;
 
     container.stdin.write(JSON.stringify(input));
     container.stdin.end();
@@ -369,6 +384,12 @@ export async function runContainerAgent(
             resetTimeout();
             // Call onOutput for all markers (including null results)
             // so idle timers start even for "silent" query completions.
+            eventBus.emit('event', {
+              type: 'container_output',
+              groupFolder: group.folder,
+              result: parsed.result ? String(parsed.result).slice(0, 200) : null,
+              timestamp: new Date().toISOString(),
+            });
             outputChain = outputChain.then(() => onOutput(parsed));
           } catch (err) {
             logger.warn(
@@ -385,6 +406,16 @@ export async function runContainerAgent(
       const lines = chunk.trim().split('\n');
       for (const line of lines) {
         if (line) logger.debug({ container: group.folder }, line);
+      }
+      // Emit stderr for dashboard monitoring (throttled)
+      if (!stderrLastEmit || Date.now() - stderrLastEmit > 2000) {
+        stderrLastEmit = Date.now();
+        eventBus.emit('event', {
+          type: 'container_stderr',
+          groupFolder: group.folder,
+          chunk: chunk.slice(0, 500),
+          timestamp: new Date().toISOString(),
+        });
       }
       // Don't reset timeout on stderr — SDK writes debug logs continuously.
       // Timeout only resets on actual output (OUTPUT_MARKER in stdout).
@@ -436,6 +467,14 @@ export async function runContainerAgent(
 
     container.on('close', (code) => {
       clearTimeout(timeout);
+      eventBus.emit('event', {
+        type: 'container_end',
+        groupFolder: group.folder,
+        containerName,
+        duration: Date.now() - startTime,
+        exitCode: code,
+        timestamp: new Date().toISOString(),
+      });
       const duration = Date.now() - startTime;
 
       if (timedOut) {

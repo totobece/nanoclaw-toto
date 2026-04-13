@@ -3,6 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import { eventBus } from './event-bus.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -107,6 +108,13 @@ async function runTask(
     { taskId: task.id, group: task.group_folder },
     'Running scheduled task',
   );
+
+  eventBus.emit('event', {
+    type: 'task_started',
+    taskId: task.id,
+    groupFolder: task.group_folder,
+    timestamp: new Date().toISOString(),
+  });
 
   const groups = deps.registeredGroups();
   const group = Object.values(groups).find(
@@ -227,6 +235,15 @@ async function runTask(
     status: error ? 'error' : 'success',
     result,
     error,
+  });
+
+  eventBus.emit('event', {
+    type: 'task_completed',
+    taskId: task.id,
+    groupFolder: task.group_folder,
+    duration: durationMs,
+    status: error ? 'error' : 'success',
+    timestamp: new Date().toISOString(),
   });
 
   const nextRun = computeNextRun(task);

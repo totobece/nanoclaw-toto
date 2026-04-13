@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
+import { eventBus } from './event-bus.js';
 import { logger } from './logger.js';
 
 interface QueuedTask {
@@ -204,6 +205,14 @@ export class GroupQueue {
     state.pendingMessages = false;
     this.activeCount++;
 
+    eventBus.emit('event', {
+      type: 'queue_start',
+      groupJid,
+      reason,
+      activeCount: this.activeCount,
+      timestamp: new Date().toISOString(),
+    });
+
     logger.debug(
       { groupJid, reason, activeCount: this.activeCount },
       'Starting container for group',
@@ -342,6 +351,20 @@ export class GroupQueue {
       }
       // If neither pending, skip this group
     }
+  }
+
+  getActiveState(): Map<string, { active: boolean; containerName: string | null; groupFolder: string | null }> {
+    const state = new Map<string, { active: boolean; containerName: string | null; groupFolder: string | null }>();
+    for (const [jid, s] of this.groups) {
+      if (s.active) {
+        state.set(jid, {
+          active: s.active,
+          containerName: s.containerName,
+          groupFolder: s.groupFolder,
+        });
+      }
+    }
+    return state;
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {

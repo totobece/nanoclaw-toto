@@ -82,6 +82,24 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      settings TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS dashboard_users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer',
+      tenant_ids TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -138,6 +156,30 @@ function createSchema(database: Database.Database): void {
     );
   } catch {
     /* columns already exist */
+  }
+
+  // Add tenant_id to registered_groups
+  try {
+    database.exec(`ALTER TABLE registered_groups ADD COLUMN tenant_id TEXT DEFAULT 'default'`);
+  } catch { /* column already exists */ }
+
+  // Add tenant_id to scheduled_tasks
+  try {
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN tenant_id TEXT DEFAULT 'default'`);
+  } catch { /* column already exists */ }
+
+  // Add tenant_id to sessions
+  try {
+    database.exec(`ALTER TABLE sessions ADD COLUMN tenant_id TEXT DEFAULT 'default'`);
+  } catch { /* column already exists */ }
+
+  // Ensure default tenant exists
+  const defaultTenant = database.prepare('SELECT id FROM tenants WHERE id = ?').get('default');
+  if (!defaultTenant) {
+    database.prepare(
+      `INSERT INTO tenants (id, name, slug, settings, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('default', 'Default', 'default', '{}', new Date().toISOString(), new Date().toISOString());
   }
 }
 
@@ -632,6 +674,80 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Tenant accessors ---
+
+export function getAllTenants(): Array<{ id: string; name: string; slug: string; settings: string; created_at: string; updated_at: string }> {
+  return db.prepare('SELECT * FROM tenants ORDER BY created_at').all() as any[];
+}
+
+export function getTenantById(id: string): { id: string; name: string; slug: string; settings: string; created_at: string; updated_at: string } | undefined {
+  return db.prepare('SELECT * FROM tenants WHERE id = ?').get(id) as any;
+}
+
+export function createTenant(tenant: { id: string; name: string; slug: string; settings?: string }): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO tenants (id, name, slug, settings, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(tenant.id, tenant.name, tenant.slug, tenant.settings || '{}', now, now);
+}
+
+export function updateTenant(id: string, updates: { name?: string; slug?: string; settings?: string }): void {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
+  if (updates.slug !== undefined) { fields.push('slug = ?'); values.push(updates.slug); }
+  if (updates.settings !== undefined) { fields.push('settings = ?'); values.push(updates.settings); }
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
+  values.push(id);
+  if (fields.length > 1) {
+    db.prepare(`UPDATE tenants SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  }
+}
+
+export function deleteTenant(id: string): void {
+  if (id === 'default') throw new Error('Cannot delete default tenant');
+  db.prepare('DELETE FROM tenants WHERE id = ?').run(id);
+}
+
+// --- Dashboard user accessors ---
+
+export function getDashboardUser(email: string): { id: string; email: string; password_hash: string; role: string; tenant_ids: string; created_at: string } | undefined {
+  return db.prepare('SELECT * FROM dashboard_users WHERE email = ?').get(email) as any;
+}
+
+export function createDashboardUser(user: { id: string; email: string; password_hash: string; role?: string; tenant_ids: string[] }): void {
+  db.prepare(
+    `INSERT INTO dashboard_users (id, email, password_hash, role, tenant_ids, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(user.id, user.email, user.password_hash, user.role || 'viewer', JSON.stringify(user.tenant_ids), new Date().toISOString());
+}
+
+// --- Tenant-scoped queries ---
+
+export function getRegisteredGroupsByTenant(tenantId: string): Record<string, import('./types.js').RegisteredGroup> {
+  const rows = db.prepare('SELECT * FROM registered_groups WHERE tenant_id = ?').all(tenantId) as Array<{
+    jid: string; name: string; folder: string; trigger_pattern: string; added_at: string;
+    container_config: string | null; requires_trigger: number | null; is_main: number | null; tenant_id: string;
+  }>;
+  const result: Record<string, import('./types.js').RegisteredGroup> = {};
+  for (const row of rows) {
+    result[row.jid] = {
+      name: row.name, folder: row.folder, trigger: row.trigger_pattern,
+      added_at: row.added_at,
+      containerConfig: row.container_config ? JSON.parse(row.container_config) : undefined,
+      requiresTrigger: row.requires_trigger === null ? undefined : row.requires_trigger === 1,
+      isMain: row.is_main === 1 ? true : undefined,
+    };
+  }
+  return result;
+}
+
+export function getTasksByTenant(tenantId: string): import('./types.js').ScheduledTask[] {
+  return db.prepare('SELECT * FROM scheduled_tasks WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId) as any[];
 }
 
 // --- JSON migration ---

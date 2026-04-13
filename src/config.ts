@@ -17,7 +17,7 @@ export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths needed for container mounts
-const PROJECT_ROOT = process.cwd();
+export const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || os.homedir();
 
 // Mount security: allowlist stored OUTSIDE project root, never mounted into containers
@@ -33,9 +33,19 @@ export const SENDER_ALLOWLIST_PATH = path.join(
   'nanoclaw',
   'sender-allowlist.json',
 );
-export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
-export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
-export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+
+// DATA_VOLUME: when set (e.g. Railway persistent volume at /data), all stateful
+// directories are placed under that path. Unset = local subdirs of PROJECT_ROOT.
+const DATA_VOLUME = process.env.DATA_VOLUME;
+export const STORE_DIR = DATA_VOLUME
+  ? path.join(DATA_VOLUME, 'store')
+  : path.resolve(PROJECT_ROOT, 'store');
+export const GROUPS_DIR = DATA_VOLUME
+  ? path.join(DATA_VOLUME, 'groups')
+  : path.resolve(PROJECT_ROOT, 'groups');
+export const DATA_DIR = DATA_VOLUME
+  ? path.join(DATA_VOLUME, 'data')
+  : path.resolve(PROJECT_ROOT, 'data');
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
@@ -71,3 +81,6 @@ export const TRIGGER_PATTERN = new RegExp(
 // Uses system timezone by default
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+export const API_PORT = parseInt(process.env.API_PORT || '3100', 10);
+export const TENANTS_DIR = path.resolve(PROJECT_ROOT, 'tenants');

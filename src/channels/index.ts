@@ -9,5 +9,5 @@
 
 // telegram
 
-// whatsapp
-import './whatsapp.js';
+// kapso (WhatsApp Cloud API via Kapso)
+import './kapso.js';
