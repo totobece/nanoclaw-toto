@@ -6,14 +6,16 @@ set -e
 DATA_VOLUME="${DATA_VOLUME:-/app}"
 AGENT_TAR="$DATA_VOLUME/nanoclaw-agent.tar"
 
-# ── 1. Start Docker daemon ────────────────────────────────────────────────────
-# Switch to legacy iptables backend — nf_tables requires extra kernel
-# capabilities not available in Railway containers without privileged mode.
-update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
-update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+# ── 1. Configure for host-network mode ────────────────────────────────────────
+# Railway containers don't have CAP_NET_ADMIN for iptables, so we run dockerd
+# with --iptables=false and tell NanoClaw to launch agents with --network=host.
+# Host-network containers share the Railway host's network stack directly —
+# no NAT tables needed and the credential proxy is reachable at localhost.
+export CONTAINER_NETWORK_MODE=host
 
-echo "[nanoclaw] Starting Docker daemon..."
-dockerd --host=unix:///var/run/docker.sock 2>&1 | sed 's/^/[dockerd] /' &
+# ── 2. Start Docker daemon ────────────────────────────────────────────────────
+echo "[nanoclaw] Starting Docker daemon (--iptables=false)..."
+dockerd --host=unix:///var/run/docker.sock --iptables=false 2>&1 | sed 's/^/[dockerd] /' &
 
 # Wait up to 60 seconds for dockerd to become responsive
 for i in $(seq 1 60); do
@@ -28,7 +30,7 @@ for i in $(seq 1 60); do
   fi
 done
 
-# ── 2. Load or build the agent container image ────────────────────────────────
+# ── 3. Load or build the agent container image ────────────────────────────────
 if docker image inspect nanoclaw-agent:latest >/dev/null 2>&1; then
   echo "[nanoclaw] Agent image already present in Docker"
 
@@ -46,6 +48,6 @@ else
   echo "[nanoclaw] Agent image cached"
 fi
 
-# ── 3. Start NanoClaw ─────────────────────────────────────────────────────────
+# ── 4. Start NanoClaw ─────────────────────────────────────────────────────────
 echo "[nanoclaw] Starting NanoClaw..."
 exec node /app/dist/index.js

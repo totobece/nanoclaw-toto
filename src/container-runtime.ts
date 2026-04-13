@@ -11,26 +11,38 @@ import { logger } from './logger.js';
 /** The container runtime binary name. */
 export const CONTAINER_RUNTIME_BIN = 'docker';
 
-/** Hostname containers use to reach the host machine. */
-export const CONTAINER_HOST_GATEWAY = 'host.docker.internal';
+/**
+ * Network mode for agent containers.
+ * 'host' — share the Railway host's network stack (no NAT/iptables needed).
+ * 'bridge' — default Docker bridge (requires iptables, works on macOS/bare Linux).
+ */
+export const CONTAINER_NETWORK_MODE =
+  process.env.CONTAINER_NETWORK_MODE || 'bridge';
+
+/**
+ * Hostname containers use to reach the host machine.
+ * With --network=host the container IS the host, so localhost works directly.
+ */
+export const CONTAINER_HOST_GATEWAY =
+  CONTAINER_NETWORK_MODE === 'host' ? 'localhost' : 'host.docker.internal';
 
 /**
  * Address the credential proxy binds to.
- * Docker Desktop (macOS): 127.0.0.1 — the VM routes host.docker.internal to loopback.
- * Docker (Linux): bind to the docker0 bridge IP so only containers can reach it,
- *   falling back to 0.0.0.0 if the interface isn't found.
+ * host-network mode: 0.0.0.0 so the proxy is reachable from any network interface.
+ * macOS / WSL: 127.0.0.1 — Docker Desktop routes host.docker.internal to loopback.
+ * Bare Linux (bridge mode): docker0 bridge IP so only containers can reach it.
  */
 export const PROXY_BIND_HOST =
   process.env.CREDENTIAL_PROXY_HOST || detectProxyBindHost();
 
 function detectProxyBindHost(): string {
+  if (CONTAINER_NETWORK_MODE === 'host') return '0.0.0.0';
   if (os.platform() === 'darwin') return '127.0.0.1';
 
   // WSL uses Docker Desktop (same VM routing as macOS) — loopback is correct.
-  // Check /proc filesystem, not env vars — WSL_DISTRO_NAME isn't set under systemd.
   if (fs.existsSync('/proc/sys/fs/binfmt_misc/WSLInterop')) return '127.0.0.1';
 
-  // Bare-metal Linux: bind to the docker0 bridge IP instead of 0.0.0.0
+  // Bare-metal Linux (bridge): bind to the docker0 bridge IP instead of 0.0.0.0
   const ifaces = os.networkInterfaces();
   const docker0 = ifaces['docker0'];
   if (docker0) {
@@ -40,9 +52,13 @@ function detectProxyBindHost(): string {
   return '0.0.0.0';
 }
 
-/** CLI args needed for the container to resolve the host gateway. */
+/** CLI args for container networking (network mode + host gateway resolution). */
 export function hostGatewayArgs(): string[] {
-  // On Linux, host.docker.internal isn't built-in — add it explicitly
+  if (CONTAINER_NETWORK_MODE === 'host') {
+    // Host networking: container shares the host's network stack — no NAT needed.
+    return ['--network=host'];
+  }
+  // Bridge mode on Linux: host.docker.internal isn't built-in, add it explicitly.
   if (os.platform() === 'linux') {
     return ['--add-host=host.docker.internal:host-gateway'];
   }
